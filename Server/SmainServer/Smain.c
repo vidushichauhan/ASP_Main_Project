@@ -72,10 +72,10 @@ void handle_client(int client_socket) {
                         continue;
                     }
 
-                    // Assuming file content is being sent right after the command
+                    // Read and write file content
                     while ((n = read(client_socket, buffer, BUFFER_SIZE)) > 0) {
                         fwrite(buffer, sizeof(char), n, fp);
-                        if (n < BUFFER_SIZE) break;
+                        if (n < BUFFER_SIZE) break; // End of file
                     }
                     fclose(fp);
                     printf("C file saved: %s\n", full_path);
