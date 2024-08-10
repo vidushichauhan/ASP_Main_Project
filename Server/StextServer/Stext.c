@@ -58,10 +58,11 @@ void handle_client(int client_socket) {
 
             if (strcmp(command, "ufile") == 0) {
                 printf("Creating directory: %s\n", dest_path);
-                create_directory(dest_path);
+                create_directory(dest_path);  // Debugging point to verify directory creation
 
                 char full_path[BUFFER_SIZE];
                 snprintf(full_path, sizeof(full_path), "%s/%s", dest_path, filename);
+                printf("Full path for file: %s\n", full_path);  // Debugging point to verify file path
 
                 FILE *fp = fopen(full_path, "w");
                 if (fp == NULL) {
@@ -92,6 +93,7 @@ void handle_client(int client_socket) {
 
     close(client_socket);
 }
+
 
 int main() {
     int server_socket, client_socket, len;

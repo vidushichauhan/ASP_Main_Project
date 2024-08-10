@@ -14,6 +14,44 @@
 #define PDF_SERVER_PORT 8091
 #define TEXT_SERVER_PORT 8081
 
+char* replace_substring(const char* str, const char* old_sub, const char* new_sub) {
+    char* result;
+    int i, count = 0;
+    int newlen = strlen(new_sub);
+    int oldlen = strlen(old_sub);
+
+    // Counting the number of times the old substring occurs in the string
+    for (i = 0; str[i] != '\0'; i++) {
+        if (strstr(&str[i], old_sub) == &str[i]) {
+            count++;
+            i += oldlen - 1;
+        }
+    }
+
+    // Allocating memory for the new string
+    result = (char*)malloc(i + count * (newlen - oldlen) + 1);
+
+    if (result == NULL) {
+        perror("Error allocating memory");
+        exit(EXIT_FAILURE);
+    }
+
+    i = 0;
+    while (*str) {
+        // Compare the substring with the result
+        if (strstr(str, old_sub) == str) {
+            strcpy(&result[i], new_sub);
+            i += newlen;
+            str += oldlen;
+        } else {
+            result[i++] = *str++;
+        }
+    }
+
+    result[i] = '\0';
+    return result;
+}
+
 void create_directory(const char *path) {
     char tmp[BUFFER_SIZE];
     char *p = NULL;
@@ -121,18 +159,24 @@ void prcclient(int client_socket) {
                     printf("C file saved: %s\n", full_path);
                     strcpy(buffer, "File saved successfully\n");
                 } else if (strstr(filename, ".pdf") != NULL) {
+                    dest_path = replace_substring(dest_path, "~smain", "~spdf");
                     forward_file_to_server(filename, dest_path, "127.0.0.1", PDF_SERVER_PORT);
                     strcpy(buffer, "PDF file forwarded to Spdf server\n");
                 } else if (strstr(filename, ".txt") != NULL) {
+                    dest_path = replace_substring(dest_path, "~smain", "~stext");
                     forward_file_to_server(filename, dest_path, "127.0.0.1", TEXT_SERVER_PORT);
                     strcpy(buffer, "Text file forwarded to Stext server\n");
                 } else {
                     strcpy(buffer, "Unsupported file type\n");
                 }
+
+                // Send response to client and break out of loop after successful handling
+                write(client_socket, buffer, strlen(buffer));
+                break; // Exit the loop after processing the command
             } else {
                 strcpy(buffer, "Unknown command\n");
+                write(client_socket, buffer, strlen(buffer));  // Send response to client
             }
-            write(client_socket, buffer, strlen(buffer));  // Send response to client
         } else {
             printf("Invalid command received.\n");
             strcpy(buffer, "Invalid command\n");
@@ -142,6 +186,7 @@ void prcclient(int client_socket) {
 
     close(client_socket);
 }
+
 
 int main() {
     int server_socket, client_socket, len;
