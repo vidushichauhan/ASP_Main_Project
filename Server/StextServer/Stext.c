@@ -6,44 +6,110 @@
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <netinet/in.h>
+#include <sys/stat.h>
+#include <errno.h>
 
-#define PORT 8082  // Port for TXT server
+#define PORT 8081
 #define BUFFER_SIZE 1024
 
-void handle_txt_request(int smain_socket) {
+void create_directory(const char *path) {
+    char tmp[BUFFER_SIZE];
+    char *p = NULL;
+    size_t len;
+
+    snprintf(tmp, sizeof(tmp), "%s", path);
+    len = strlen(tmp);
+    if (tmp[len - 1] == '/')
+        tmp[len - 1] = 0;
+    for (p = tmp + 1; *p; p++) {
+        if (*p == '/') {
+            *p = 0;
+            if (mkdir(tmp, S_IRWXU) != 0 && errno != EEXIST) {
+                perror("Error creating directory");
+                return;
+            }
+            *p = '/';
+        }
+    }
+    if (mkdir(tmp, S_IRWXU) != 0 && errno != EEXIST) {
+        perror("Error creating directory");
+    }
+}
+
+void handle_client(int client_socket) {
     char buffer[BUFFER_SIZE];
     int n;
 
     while (1) {
         bzero(buffer, BUFFER_SIZE);
-        n = read(smain_socket, buffer, BUFFER_SIZE);
+        n = read(client_socket, buffer, BUFFER_SIZE);
         if (n <= 0) {
-            printf("Smain disconnected\n");
+            printf("Client disconnected\n");
             break;
         }
-        printf("Received request from Smain: %s", buffer);
+        printf("Client: %s\n", buffer);
 
-        // Here you would handle the file transfer, storage, or retrieval of TXT files
-        // For example, save a TXT file, send a TXT file, or delete a TXT file
+        char *command = strtok(buffer, " ");
+        char *filename = strtok(NULL, " ");
+        char *dest_path = strtok(NULL, " ");
 
-        bzero(buffer, BUFFER_SIZE);
-        strcpy(buffer, "TXT request processed\n");
-        write(smain_socket, buffer, sizeof(buffer));
+        if (command && filename && dest_path) {
+            printf("Received command: %s, filename: %s, destination: %s\n", command, filename, dest_path);
+
+            if (strcmp(command, "ufile") == 0) {
+                printf("Creating directory: %s\n", dest_path);
+                create_directory(dest_path);
+
+                char full_path[BUFFER_SIZE];
+                snprintf(full_path, sizeof(full_path), "%s/%s", dest_path, filename);
+
+                FILE *fp = fopen(full_path, "w");
+                if (fp == NULL) {
+                    perror("Error opening file");
+                    strcpy(buffer, "Error saving file\n");
+                    write(client_socket, buffer, strlen(buffer));
+                    continue;
+                }
+
+                // Read and write file content
+                while ((n = read(client_socket, buffer, BUFFER_SIZE)) > 0) {
+                    fwrite(buffer, sizeof(char), n, fp);
+                    if (n < BUFFER_SIZE) break; // End of file
+                }
+                fclose(fp);
+                printf("Text file saved: %s\n", full_path);
+                strcpy(buffer, "Text file saved successfully\n");
+            } else {
+                strcpy(buffer, "Unknown command\n");
+            }
+            write(client_socket, buffer, strlen(buffer));  // Send response to Smain
+        } else {
+            printf("Invalid command received.\n");
+            strcpy(buffer, "Invalid command\n");
+            write(client_socket, buffer, strlen(buffer));
+        }
     }
 
-    close(smain_socket);
+    close(client_socket);
 }
 
 int main() {
-    int server_socket, smain_socket, len;
-    struct sockaddr_in server_addr, smain_addr;
+    int server_socket, client_socket, len;
+    struct sockaddr_in server_addr, client_addr;
 
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0) {
         printf("Error in socket creation\n");
         exit(1);
     }
-    printf("TXT Server socket created successfully\n");
+    printf("Socket created successfully\n");
+
+    // Set the SO_REUSEADDR option to allow port reuse
+    int opt = 1;
+    if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
+        perror("setsockopt failed");
+        exit(EXIT_FAILURE);
+    }
 
     bzero(&server_addr, sizeof(server_addr));
 
@@ -61,24 +127,24 @@ int main() {
         printf("Listen failed\n");
         exit(1);
     }
-    printf("TXT Server listening...\n");
+    printf("Server listening...\n");
 
-    len = sizeof(smain_addr);
+    len = sizeof(client_addr);
 
     while (1) {
-        smain_socket = accept(server_socket, (struct sockaddr*)&smain_addr, &len);
-        if (smain_socket < 0) {
+        client_socket = accept(server_socket, (struct sockaddr*)&client_addr, &len);
+        if (client_socket < 0) {
             printf("Server accept failed\n");
             exit(1);
         }
-        printf("Accepted connection from Smain\n");
+        printf("Server accepted the Smain request\n");
 
         if (fork() == 0) {
             close(server_socket);
-            handle_txt_request(smain_socket);
+            handle_client(client_socket);
             exit(0);
         } else {
-            close(smain_socket);
+            close(client_socket);
         }
     }
 

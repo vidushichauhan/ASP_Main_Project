@@ -11,6 +11,8 @@
 
 #define PORT 8080
 #define BUFFER_SIZE 1024
+#define PDF_SERVER_PORT 8091
+#define TEXT_SERVER_PORT 8081
 
 void create_directory(const char *path) {
     char tmp[BUFFER_SIZE];
@@ -36,7 +38,46 @@ void create_directory(const char *path) {
     }
 }
 
-void handle_client(int client_socket) {
+void forward_file_to_server(const char *filename, const char *dest_path, const char *server_ip, int server_port) {
+    int sock;
+    struct sockaddr_in server_addr;
+    char buffer[BUFFER_SIZE];
+    FILE *fp;
+
+    if ((sock = socket(AF_INET, SOCK_STREAM, 0)) == -1) {
+        perror("Socket creation failed");
+        return;
+    }
+
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(server_port);
+    server_addr.sin_addr.s_addr = inet_addr(server_ip);
+
+    if (connect(sock, (struct sockaddr *)&server_addr, sizeof(server_addr)) == -1) {
+        perror("Connect failed");
+        close(sock);
+        return;
+    }
+
+    // Send the file path to the respective server
+    snprintf(buffer, sizeof(buffer), "ufile %s %s", filename, dest_path);
+    send(sock, buffer, strlen(buffer), 0);
+
+    // Send file content
+    fp = fopen(filename, "r");
+    if (fp == NULL) {
+        perror("Error opening file");
+        close(sock);
+        return;
+    }
+    while (fgets(buffer, BUFFER_SIZE, fp) != NULL) {
+        send(sock, buffer, strlen(buffer), 0);
+    }
+    fclose(fp);
+    close(sock);
+}
+
+void prcclient(int client_socket) {
     char buffer[BUFFER_SIZE];
     int n;
 
@@ -57,13 +98,13 @@ void handle_client(int client_socket) {
             printf("Received command: %s, filename: %s, destination: %s\n", command, filename, dest_path);
 
             if (strcmp(command, "ufile") == 0) {
-                printf("Creating directory: %s\n", dest_path);
-                create_directory(dest_path);
-
-                char full_path[BUFFER_SIZE];
-                snprintf(full_path, sizeof(full_path), "%s/%s", dest_path, filename);
-
                 if (strstr(filename, ".c") != NULL) {
+                    printf("Creating directory: %s\n", dest_path);
+                    create_directory(dest_path);
+
+                    char full_path[BUFFER_SIZE];
+                    snprintf(full_path, sizeof(full_path), "%s/%s", dest_path, filename);
+
                     FILE *fp = fopen(full_path, "w");
                     if (fp == NULL) {
                         perror("Error opening file");
@@ -72,17 +113,21 @@ void handle_client(int client_socket) {
                         continue;
                     }
 
-                    // Read and write file content
                     while ((n = read(client_socket, buffer, BUFFER_SIZE)) > 0) {
                         fwrite(buffer, sizeof(char), n, fp);
-                        if (n < BUFFER_SIZE) break; // End of file
+                        if (n < BUFFER_SIZE) break;
                     }
                     fclose(fp);
                     printf("C file saved: %s\n", full_path);
                     strcpy(buffer, "File saved successfully\n");
+                } else if (strstr(filename, ".pdf") != NULL) {
+                    forward_file_to_server(filename, dest_path, "127.0.0.1", PDF_SERVER_PORT);
+                    strcpy(buffer, "PDF file forwarded to Spdf server\n");
+                } else if (strstr(filename, ".txt") != NULL) {
+                    forward_file_to_server(filename, dest_path, "127.0.0.1", TEXT_SERVER_PORT);
+                    strcpy(buffer, "Text file forwarded to Stext server\n");
                 } else {
-                    // Other file types could be handled here
-                    strcpy(buffer, "File type not supported\n");
+                    strcpy(buffer, "Unsupported file type\n");
                 }
             } else {
                 strcpy(buffer, "Unknown command\n");
@@ -145,7 +190,7 @@ int main() {
 
         if (fork() == 0) {
             close(server_socket);
-            handle_client(client_socket);
+            prcclient(client_socket);
             exit(0);
         } else {
             close(client_socket);
