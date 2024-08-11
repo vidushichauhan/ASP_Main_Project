@@ -10,6 +10,16 @@
 #define PORT 9080
 #define BUFFER_SIZE 1024
 
+// Function to extract the file name from the path
+char* extract_filename(const char* path) {
+    char *filename = strrchr(path, '/');
+    if (filename == NULL) {
+        return strdup(path);  // No '/' found, return the original path as filename
+    } else {
+        return strdup(filename + 1);  // Return the string after the last '/'
+    }
+}
+
 int main() {
     int client_socket;
     struct sockaddr_in server_addr;
@@ -47,13 +57,13 @@ int main() {
 
         write(client_socket, command, strlen(command));
 
-        // Check if the command is 'ufile' and contains a file name
+        // Handle 'ufile' command
         if (strncmp("ufile", command, 5) == 0) {
             char *filename = strtok(command + 6, " "); // Get filename after 'ufile '
             fp = fopen(filename, "r");
             if (fp == NULL) {
                 perror("Error opening file");
-                continue;
+                continue;  // Skip to the next iteration of the loop
             }
             printf("Sending file content of %s\n", filename);
 
@@ -62,16 +72,33 @@ int main() {
                 write(client_socket, buffer, strlen(buffer));
             }
             fclose(fp);
+
+            // Wait for the server response after ufile
+            int bytes_received = read(client_socket, buffer, BUFFER_SIZE);
+            if (bytes_received > 0) {
+                buffer[bytes_received] = '\0'; // Null-terminate the buffer
+                printf("Server: %s\n", buffer);
+            }
+
+            continue;  // Restart the loop
         }
 
-        // Expect a response from the server
-        int bytes_received = read(client_socket, buffer, BUFFER_SIZE);
-        if (bytes_received > 0) {
-            buffer[bytes_received] = '\0'; // Null-terminate the buffer
-            printf("Server: %s\n", buffer);
-        } else {
-            printf("No response from server, connection might be closed.\n");
-            break;
+        // Handle 'dfile' command
+        if (strncmp("dfile", command, 5) == 0) {
+            char *filepath = strtok(command + 6, " "); // Get file path after 'dfile '
+            if (filepath != NULL) {
+                char *filename = extract_filename(filepath);
+                printf("Receiving file: %s\n", filename);
+                fp = fopen(filename, "w");
+                if (fp == NULL) {
+                    perror("Error creating file");
+                    free(filename);
+                    continue;  // Skip to the next iteration of the loop
+                }
+                fclose(fp);
+                printf("File %s received successfully\n", filename);
+                continue;  // Restart the loop
+            }
         }
 
         if (strncmp("exit", command, 4) == 0) {
