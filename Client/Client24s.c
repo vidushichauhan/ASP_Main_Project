@@ -63,7 +63,7 @@ int main() {
             fp = fopen(filename, "r");
             if (fp == NULL) {
                 perror("Error opening file");
-                continue;  // Skip to the next iteration of the loop
+                continue;
             }
             printf("Sending file content of %s\n", filename);
 
@@ -72,15 +72,6 @@ int main() {
                 write(client_socket, buffer, strlen(buffer));
             }
             fclose(fp);
-
-            // Wait for the server response after ufile
-            int bytes_received = read(client_socket, buffer, BUFFER_SIZE);
-            if (bytes_received > 0) {
-                buffer[bytes_received] = '\0'; // Null-terminate the buffer
-                printf("Server: %s\n", buffer);
-            }
-
-            continue;  // Restart the loop
         }
 
         // Handle 'dfile' command
@@ -93,12 +84,31 @@ int main() {
                 if (fp == NULL) {
                     perror("Error creating file");
                     free(filename);
-                    continue;  // Skip to the next iteration of the loop
+                    continue;
+                }
+
+                int bytes_received;
+                while ((bytes_received = read(client_socket, buffer, BUFFER_SIZE)) > 0) {
+                    fwrite(buffer, sizeof(char), bytes_received, fp);
+                    if (bytes_received < BUFFER_SIZE) {
+                        break;  // End of file or transmission
+                    }
                 }
                 fclose(fp);
                 printf("File %s received successfully\n", filename);
-                continue;  // Restart the loop
+            continue;
+
             }
+        }
+
+        // Expect a response from the server
+        int bytes_received = read(client_socket, buffer, BUFFER_SIZE);
+        if (bytes_received > 0) {
+            buffer[bytes_received] = '\0'; // Null-terminate the buffer
+            printf("Server: %s\n", buffer);
+        } else {
+            printf("No response from server, connection might be closed.\n");
+            break;
         }
 
         if (strncmp("exit", command, 4) == 0) {
