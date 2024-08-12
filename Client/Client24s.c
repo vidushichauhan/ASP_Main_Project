@@ -26,6 +26,7 @@ int main() {
     char buffer[BUFFER_SIZE];
     char command[BUFFER_SIZE];
     FILE *fp;
+    int n; // Declare the variable 'n' here
 
     client_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (client_socket < 0) {
@@ -68,8 +69,8 @@ int main() {
             printf("Sending file content of %s\n", filename);
 
             // Send file content to the server
-            while (fgets(buffer, BUFFER_SIZE, fp) != NULL) {
-                write(client_socket, buffer, strlen(buffer));
+            while ((n = fread(buffer, 1, BUFFER_SIZE, fp)) > 0) {
+                write(client_socket, buffer, n);
             }
             fclose(fp);
         }
