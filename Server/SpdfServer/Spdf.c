@@ -8,10 +8,12 @@
 #include <netinet/in.h>
 #include <sys/stat.h>
 #include <errno.h>
+#include <fcntl.h>
 
 #define PORT 8091  // Port number for the Spdf server
 #define BUFFER_SIZE 1024
 
+// Function to create the directory structure
 void create_directory(const char *path) {
     char tmp[BUFFER_SIZE];
     char *p = NULL;
@@ -36,6 +38,7 @@ void create_directory(const char *path) {
     }
 }
 
+// Function to handle the client request
 void handle_client(int client_socket) {
     char buffer[BUFFER_SIZE];
     int n;
@@ -53,8 +56,8 @@ void handle_client(int client_socket) {
         char *filename = strtok(NULL, " ");
         char *dest_path = strtok(NULL, " ");
 
-        if (command && filename && dest_path) {
-            printf("Received command: %s, filename: %s, destination: %s\n", command, filename, dest_path);
+        if (command && filename) {
+            printf("Received command: %s, filename: %s\n", command, filename);
 
             if (strcmp(command, "ufile") == 0) {
                 printf("Creating directory: %s\n", dest_path);
@@ -73,13 +76,40 @@ void handle_client(int client_socket) {
 
                 // Read and write file content
                 while ((n = read(client_socket, buffer, BUFFER_SIZE)) > 0) {
+                    printf("Spdf received %d bytes\n", n);
                     fwrite(buffer, sizeof(char), n, fp);
                     if (n < BUFFER_SIZE) break; // End of file
                 }
-                fclose(fp);
                 printf("PDF file saved: %s\n", full_path);
                 strcpy(buffer, "PDF file saved successfully\n");
-            } else {
+
+            } else if (strcmp(command, "dfile") == 0) {
+                printf("Sending PDF file: %s\n", filename);
+                int fd = open(filename, O_RDONLY);
+                if (fd == -1) {
+                    perror("Error opening file");
+                    strcpy(buffer, "Error reading file\n");
+                    write(client_socket, buffer, strlen(buffer));
+                } else {
+                    while ((n = read(fd, buffer, BUFFER_SIZE)) > 0) {
+                        write(client_socket, buffer, n);
+                    }
+                    close(fd);
+                }
+            } 
+             if (strcmp(command, "rmfile") == 0) {
+    printf("Deleting file: %s\n", filename);
+    if (remove(filename) == 0) {
+        printf("File %s deleted successfully\n", filename);
+        strcpy(buffer, "File deleted successfully\n");
+    } else {
+        perror("Error deleting file");
+        strcpy(buffer, "Error deleting file\n");
+    }
+    write(client_socket, buffer, strlen(buffer));
+}
+            
+            else {
                 strcpy(buffer, "Unknown command\n");
             }
             write(client_socket, buffer, strlen(buffer));  // Send response to Smain
@@ -93,11 +123,11 @@ void handle_client(int client_socket) {
     close(client_socket);
 }
 
+// Main function to set up the server
 int main() {
     int server_socket, client_socket, len;
     struct sockaddr_in server_addr, client_addr;
 
-    // Create socket
     server_socket = socket(AF_INET, SOCK_STREAM, 0);
     if (server_socket < 0) {
         printf("Error in socket creation\n");
@@ -110,10 +140,9 @@ int main() {
     if (setsockopt(server_socket, SOL_SOCKET, SO_REUSEADDR, &opt, sizeof(opt))) {
         perror("setsockopt failed");
         close(server_socket);
-        exit(EXIT_FAILURE);
+        exit(1);
     }
 
-    // Configure server address structure
     bzero(&server_addr, sizeof(server_addr));
     server_addr.sin_family = AF_INET;
     server_addr.sin_addr.s_addr = htonl(INADDR_ANY);
