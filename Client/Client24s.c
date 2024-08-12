@@ -102,6 +102,13 @@ int main() {
             }
         }
 
+        if (strncmp("rmfile", command, 6) == 0) {
+            char *filepath = strtok(command + 7, " "); // Get file path after 'rmfile '
+            if (filepath != NULL) {
+                printf("Sending file removal request for: %s\n", filepath);
+            }
+        }
+
         // Expect a response from the server
         int bytes_received = read(client_socket, buffer, BUFFER_SIZE);
         if (bytes_received > 0) {
