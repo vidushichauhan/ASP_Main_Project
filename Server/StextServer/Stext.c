@@ -38,6 +38,7 @@ void create_directory(const char *path) {
     }
 }
 
+// Function to handle the client request
 void handle_client(int client_socket) {
     char buffer[BUFFER_SIZE];
     int n;
@@ -127,7 +128,6 @@ void handle_client(int client_socket) {
 
     close(client_socket);
 }
-
 
 // Main function to set up the server
 int main() {
